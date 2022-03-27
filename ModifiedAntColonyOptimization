@@ -1,0 +1,146 @@
+import math
+import random
+import numpy as np
+
+class ModifiedAntColonyOptimization:
+    @staticmethod
+    def endpoint_analysis(edge_image):
+        m, n = edge_image.shape
+        endpoint = np.zeros((m, n), np.uint8)
+        endpoint_num = 0
+        for i in range(1, m-1):
+            for j in range(1, n-1):
+                link_point = 0
+                if edge_image[i, j] != 0:
+                    neighboring_pixels = [edge_image[i-1, j+1], edge_image[i, j+1], edge_image[i+1, j+1],
+                                          edge_image[i+1, j], edge_image[i+1, j-1], edge_image[i, j-1],
+                                          edge_image[i-1, j-1], edge_image[i-1, j]]
+                    for k in range(len(neighboring_pixels)):
+                        if neighboring_pixels[k] != 0:
+                            link_point += 1
+                    if link_point == 1:
+                        endpoint[i, j] = 255
+                        endpoint_num += 1
+        return endpoint, endpoint_num
+
+    @staticmethod
+    def pixel_transition(edge_image, endpoint_img, pheromone, path_visibility, alpha, beta, step):
+        m, n = edge_image.shape
+        draw = np.zeros((m, n))
+        endpoint = endpoint_img.copy()
+        for i in range(2, m-2):
+            for j in range(2, n-2):
+                compensation_edges = np.zeros((m, n))
+                if draw[i, j] == 0:
+                    for x in range(step):
+                        if endpoint[i, j] != 0 and compensation_edges[i, j] == 0:
+                            neighboring_canny = [edge_image[i - 1, j + 1], edge_image[i, j + 1],
+                                                 edge_image[i + 1, j + 1], edge_image[i + 1, j],
+                                                 edge_image[i + 1, j - 1], edge_image[i, j - 1],
+                                                 edge_image[i - 1, j - 1], edge_image[i - 1, j]]
+                            neighboring_compensation = [compensation_edges[i-1, j+1], compensation_edges[i, j+1],
+                                                        compensation_edges[i+1, j+1], compensation_edges[i+1, j],
+                                                        compensation_edges[i+1, j-1], compensation_edges[i, j-1],
+                                                        compensation_edges[i-1, j-1], compensation_edges[i-1, j]]
+                            neighboring_pheromone = [pheromone[i-1, j+1], pheromone[i, j+1],
+                                                     pheromone[i+1, j+1], pheromone[i+1, j],
+                                                     pheromone[i+1, j-1], pheromone[i, j-1],
+                                                     pheromone[i-1, j-1], pheromone[i-1, j]]
+                            neighboring_path_visibility = [path_visibility[i-1, j+1], path_visibility[i, j+1],
+                                                           path_visibility[i+1, j+1], path_visibility[i+1, j],
+                                                           path_visibility[i+1, j-1], path_visibility[i, j-1],
+                                                           path_visibility[i-1, j-1], path_visibility[i-1, j]]
+                            chosen_direction = 0
+                            # ant cannot move to the pixel which had passed by itself
+                            for k in range(len(neighboring_compensation)):
+                                if neighboring_compensation[k] != 0:
+                                    neighboring_path_visibility[k] = 0
+                            relative_influence = [0, 0, 0, 0, 0, 0, 0, 0]
+                            for k in range(len(relative_influence)):
+                                relative_influence[k] = (neighboring_pheromone[k] ** alpha) * \
+                                                        (neighboring_path_visibility[k] ** beta)
+                            for k in range(len(neighboring_canny)):
+                                if neighboring_canny[k] != 0:
+                                    relative_influence[k] = 0
+                            chosen_position = 0
+                            ant_selection = random.choices([1, 2], weights=[8, 2], k=1)
+                            # ant choose exploitation
+                            if ant_selection[0] == 1:
+                                # if relative_influence == [0, 0, 0, 0, 0, 0, 0, 0]:
+                                #     compensation_edges[i, j] = 1
+                                # else:
+                                largest_relative_influence = max(relative_influence)
+                                for k in range(len(relative_influence)):
+                                    if largest_relative_influence == relative_influence[k]:
+                                        chosen_direction = k
+                            # ant choose exploration
+                            elif ant_selection[0] == 2:
+                                normalization_factor = (relative_influence[0] + relative_influence[1]
+                                                        + relative_influence[2] + relative_influence[3]
+                                                        + relative_influence[4] + relative_influence[5]
+                                                        + relative_influence[6] + relative_influence[7])
+                                if normalization_factor == 0:
+                                    compensation_edges[i, j] = 1
+                                else:
+                                    neighboring_probability = [0, 0, 0, 0, 0, 0, 0, 0]
+                                    direction = [0, 1, 2, 3, 4, 5, 6, 7]
+                                    for k in range(len(neighboring_probability)):
+                                        neighboring_probability[k] = relative_influence[k] / normalization_factor
+                                    chosen_direction = random.choices(direction, weights=neighboring_probability, k=1)
+                                    # for k in range(len(direction)):
+                                    #     if chosen_direction == direction[k]:
+                                    #         chosen_position = k
+                            if compensation_edges[i, j] == 0:
+                                if chosen_direction == 0:
+                                    endpoint[i-1, j+1] = 255
+                                    draw[i - 1, j + 1] = 255
+                                    compensation_edges[i, j] = 1
+                                    i, j = i-1, j+1
+                                elif chosen_direction == 1:
+                                    endpoint[i, j+1] = 255
+                                    draw[i, j + 1] = 255
+                                    compensation_edges[i, j] = 1
+                                    i, j = i, j+1
+                                elif chosen_direction == 2:
+                                    endpoint[i+1, j+1] = 255
+                                    draw[i + 1, j + 1] = 255
+                                    compensation_edges[i, j] = 1
+                                    i, j = i+1, j+1
+                                elif chosen_direction == 3:
+                                    endpoint[i+1, j] = 255
+                                    draw[i + 1, j] = 255
+                                    compensation_edges[i, j] = 1
+                                    i, j = i+1, j
+                                elif chosen_direction == 4:
+                                    endpoint[i+1, j-1] = 255
+                                    draw[i + 1, j - 1] = 255
+                                    compensation_edges[i, j] = 1
+                                    i, j = i+1, j-1
+                                elif chosen_direction == 5:
+                                    endpoint[i, j-1] = 255
+                                    draw[i, j - 1] = 255
+                                    compensation_edges[i, j] = 1
+                                    i, j = i, j-1
+                                elif chosen_direction == 6:
+                                    endpoint[i-1, j-1] = 255
+                                    draw[i - 1, j - 1] = 255
+                                    compensation_edges[i, j] = 1
+                                    i, j = i-1, j-1
+                                elif chosen_direction == 7:
+                                    endpoint[i-1, j] = 255
+                                    draw[i - 1, j] = 255
+                                    compensation_edges[i, j] = 1
+                                    i, j = i-1, j
+        return endpoint
+
+    @staticmethod
+    def pheromone_update(path, pheromone, evaporation_rate):
+        m, n = pheromone.shape
+        for i in range(m):
+            for j in range(n):
+                if path[i, j] != 0:
+                    pheromone_change = 1
+                else:
+                    pheromone_change = 0
+                pheromone[i, j] = (1 - evaporation_rate) * pheromone[i, j] + evaporation_rate * pheromone_change
+        return pheromone
