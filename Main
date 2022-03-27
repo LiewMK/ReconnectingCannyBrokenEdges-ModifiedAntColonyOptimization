@@ -1,0 +1,613 @@
+import sys
+import cv2
+import numpy as np
+from PyQt5 import QtGui, QtWidgets, QtCore
+from FYP_Functions import CannyEdgeDetection, ModifiedAntColonyOptimization, MorphologicalThinning, Evaluate
+
+
+class SecondPage(QtWidgets.QMainWindow):
+    def __init__(self, parent=None):
+        super(SecondPage, self).__init__(parent)
+        self.setFixedSize(1300, 800)
+        self.counter = 0
+        self.detail_page = Detail()
+        self.save_page = Save()
+        self.help_page = Help()
+        # IMAGE
+        self.input_image = None
+        self.gaussian_image = None
+        self.sobel_image = None
+        self.non_maximum_image = None
+        self.canny_image = None
+        self.endpoint_image = None
+        self.ant_image = None
+        self.thinning_image = None
+        self.final_image = None
+        # INPUT VALUE
+        self.sd_value = 1.2
+        self.t1_value, self.t2_value = 50, 150
+        self.step_value = 100
+        self.alpha_value, self.beta_value = 1, 10
+        # EVALUATION VALUE
+        self.mse1_value, self.mse2_value, self.mse3_value, self.mse4_value = 0, 0, 0, 0
+        self.psnr1_value, self.psnr2_value, self.psnr3_value, self.psnr4_value = 0, 0, 0, 0
+        self.corr1_value, self.corr2_value, self.corr3_value, self.corr4_value = 0, 0, 0, 0
+        self.d1_value, self.d2_value, self.d3_value, self.d4_value = 0, 0, 0, 0
+        self.mse_difference = 0
+        self.psnr_difference = 0
+        self.corr_difference = 0
+        self.d_difference = 0
+        self.canny_endpoint_num = 0
+        self.final_endpoint_num = 0
+        self.endpoint_num_difference = 0
+        # UI
+        self.ui_components()
+        self.original_input_label = QtWidgets.QLabel(self.input_groupbox)
+        self.canny_output_label = QtWidgets.QLabel(self.canny_output_groupbox)
+        self.final_output_label = QtWidgets.QLabel(self.final_output_groupbox)
+
+    def ui_components(self):
+        self.logo()
+        self.title()
+        self.v_line()
+        self.menu_bar()
+        self.button()
+        self.progress_bar()
+        self.input_img_groupbox()
+        self.adjust_values_groupbox()
+        self.evaluation_results_groupbox()
+        self.output_groupboxes()
+
+    def menu_bar(self):
+        file_menu = self.menuBar().addMenu('File')
+        help_action = self.menuBar().addAction('Help')
+        open_action = QtWidgets.QAction('Open', self)
+        self.save_action = QtWidgets.QAction('Save', self)
+        file_menu.addAction(open_action)
+        file_menu.addSeparator()
+        file_menu.addAction(self.save_action)
+        open_action.setIcon(QtGui.QIcon(r'backup\picture\logo_icon\open_icon.png'))
+        open_action.setShortcut('Ctrl+O')
+        self.save_action.setIcon(QtGui.QIcon(r'backup\picture\logo_icon\save_icon.png'))
+        self.save_action.setShortcut('Ctrl+S')
+        self.save_action.setDisabled(True)
+        self.menuBar().setFont(QtGui.QFont('Arial', 11))
+        file_menu.setFont(QtGui.QFont('Arial', 10))
+        help_action.triggered.connect(self.open_help)
+        open_action.triggered.connect(self.browse_image)
+        self.save_action.triggered.connect(self.open_save)
+
+    def logo(self):
+        ums_logo_label = QtWidgets.QLabel(self)
+        ums_logo_label.setPixmap(QtGui.QPixmap(r'backup\picture\logo_icon\ums_logo.png'))
+        ums_logo_label.setGeometry(40, 45, 160, 72)
+        mcg_logo_label = QtWidgets.QLabel(self)
+        mcg_logo_label.setPixmap(QtGui.QPixmap(r'backup\picture\logo_icon\mcg_logo.png'))
+        mcg_logo_label.setGeometry(760, 45, 145, 72)
+
+    def title(self):
+        font = QtGui.QFont()
+        font.setFamily("Arial")
+        font.setPointSize(14)
+        title_text = QtWidgets.QLabel(self)
+        title_text.setAlignment(QtCore.Qt.AlignCenter)
+        title_text.setText('Reconnecting Broken Edges in Canny\nEdge Detection by Using Modified'
+                           '\nAnt Colony Optimization')
+        title_text.setFont(font)
+        title_text.setGeometry(250, 35, 451, 90)
+
+    def v_line(self):
+        line = QtWidgets.QFrame(self)
+        line.setGeometry(933, 0, 20, 800)
+        line.setLineWidth(2)
+        line.setFrameShape(QtWidgets.QFrame.VLine)
+        line.setFrameShadow(QtWidgets.QFrame.Sunken)
+
+    def input_img_groupbox(self):
+        font = QtGui.QFont()
+        font.setFamily("Arial")
+        font.setPointSize(11)
+        self.input_groupbox = QtWidgets.QGroupBox(self)
+        self.input_groupbox.setTitle('INPUT IMAGE')
+        self.input_groupbox.setFont(font)
+        self.input_groupbox.setGeometry(960, 45, 321, 300)
+        self.input_groupbox.setStyleSheet("QGroupBox { border: 1.5px solid silver}")
+
+    def adjust_values_groupbox(self):
+        font = QtGui.QFont()
+        font.setFamily("Arial")
+        font.setPointSize(11)
+        # GROUPBOX
+        values_groupbox = QtWidgets.QGroupBox(self)
+        values_groupbox.setTitle('VALUES')
+        values_groupbox.setFont(font)
+        values_groupbox.setGeometry(960, 365, 321, 355)
+        values_groupbox.setStyleSheet("QGroupBox{border: 1.5px solid silver}")
+        # TEXT
+        canny_text = QtWidgets.QLabel(values_groupbox)
+        canny_text.setText('-- Canny Edge Detection --')
+        canny_text.setFont(font)
+        canny_text.setGeometry(52, 30, 220, 31)
+        sd_text = QtWidgets.QLabel(values_groupbox)
+        sd_text.setText('Standard Deviation')
+        sd_text.setFont(font)
+        sd_text.setGeometry(20, 70, 171, 31)
+        t1_text = QtWidgets.QLabel(values_groupbox)
+        t1_text.setText('Low Threshold')
+        t1_text.setFont(font)
+        t1_text.setGeometry(20, 110, 171, 31)
+        t2_text = QtWidgets.QLabel(values_groupbox)
+        t2_text.setText('High Threshold')
+        t2_text.setFont(font)
+        t2_text.setGeometry(20, 150, 171, 31)
+        MACO_text = QtWidgets.QLabel(values_groupbox)
+        MACO_text.setText('-- MACO --')
+        MACO_text.setFont(font)
+        MACO_text.setGeometry(120, 190, 220, 31)
+        rate_text = QtWidgets.QLabel(values_groupbox)
+        rate_text.setText('Number of Steps')
+        rate_text.setFont(font)
+        rate_text.setGeometry(20, 310, 171, 31)
+        alpha_text = QtWidgets.QLabel(values_groupbox)
+        alpha_text.setText('Alpha (\u03B1)')
+        alpha_text.setFont(font)
+        alpha_text.setGeometry(20, 230, 171, 31)
+        beta_text = QtWidgets.QLabel(values_groupbox)
+        beta_text.setText('Beta (\u03B2)')
+        beta_text.setFont(font)
+        beta_text.setGeometry(20, 270, 171, 31)
+        # SPINNER
+        self.sd_spinner = QtWidgets.QDoubleSpinBox(values_groupbox)
+        self.sd_spinner.setFont(font)
+        self.sd_spinner.setGeometry(200, 70, 101, 31)
+        self.sd_spinner.setRange(0.1, 2)
+        self.sd_spinner.setSingleStep(0.1)
+        self.sd_spinner.setValue(self.sd_value)
+        self.sd_spinner.valueChanged.connect(self.update_parameters)
+        self.t1_spinner = QtWidgets.QSpinBox(values_groupbox)
+        self.t1_spinner.setFont(font)
+        self.t1_spinner.setGeometry(200, 110, 101, 31)
+        self.t1_spinner.setRange(1, 255)
+        self.t1_spinner.setSingleStep(1)
+        self.t1_spinner.setValue(self.t1_value)
+        self.t1_spinner.valueChanged.connect(self.update_parameters)
+        self.t2_spinner = QtWidgets.QSpinBox(values_groupbox)
+        self.t2_spinner.setFont(font)
+        self.t2_spinner.setGeometry(200, 150, 101, 31)
+        self.t2_spinner.setRange(1, 255)
+        self.t2_spinner.setSingleStep(1)
+        self.t2_spinner.setValue(self.t2_value)
+        self.t2_spinner.valueChanged.connect(self.update_parameters)
+        self.step_spinner = QtWidgets.QSpinBox(values_groupbox)
+        self.step_spinner.setFont(font)
+        self.step_spinner.setGeometry(200, 310, 101, 31)
+        self.step_spinner.setRange(50, 150)
+        self.step_spinner.setSingleStep(1)
+        self.step_spinner.setValue(self.step_value)
+        self.step_spinner.valueChanged.connect(self.update_parameters)
+        self.alpha_spinner = QtWidgets.QSpinBox(values_groupbox)
+        self.alpha_spinner.setFont(font)
+        self.alpha_spinner.setGeometry(200, 230, 101, 31)
+        self.alpha_spinner.setRange(1, 10)
+        self.alpha_spinner.setSingleStep(1)
+        self.alpha_spinner.setValue(self.alpha_value)
+        self.alpha_spinner.valueChanged.connect(self.update_parameters)
+        self.beta_spinner = QtWidgets.QSpinBox(values_groupbox)
+        self.beta_spinner.setFont(font)
+        self.beta_spinner.setGeometry(200, 270, 101, 31)
+        self.beta_spinner.setRange(1, 10)
+        self.beta_spinner.setSingleStep(1)
+        self.beta_spinner.setValue(self.beta_value)
+        self.beta_spinner.valueChanged.connect(self.update_parameters)
+
+    def update_parameters(self):
+        self.sd_value = self.sd_spinner.value()
+        self.t1_value = self.t1_spinner.value()
+        self.t2_value = self.t2_spinner.value()
+        self.step_value = self.step_spinner.value()
+        self.alpha_value = self.alpha_spinner.value()
+        self.beta_value = self.beta_spinner.value()
+
+    def evaluation_results_groupbox(self):
+        font = QtGui.QFont()
+        font.setFamily("Arial")
+        font.setPointSize(11)
+        # GROUPBOX
+        evaluation_groupbox = QtWidgets.QGroupBox(self)
+        evaluation_groupbox.setTitle('EVALUATION')
+        evaluation_groupbox.setFont(font)
+        evaluation_groupbox.setGeometry(75, 505, 800, 200)
+        evaluation_groupbox.setStyleSheet("QGroupBox{border: 1.5px solid silver}")
+        # TEXT LABEL
+        canny_label = QtWidgets.QLabel("Canny", evaluation_groupbox)
+        canny_label.setAlignment(QtCore.Qt.AlignCenter)
+        canny_label.setFont(font)
+        proposed_system_label = QtWidgets.QLabel("Final Result", evaluation_groupbox)
+        proposed_system_label.setAlignment(QtCore.Qt.AlignCenter)
+        proposed_system_label.setFont(font)
+        difference_label = QtWidgets.QLabel("Difference", evaluation_groupbox)
+        difference_label.setAlignment(QtCore.Qt.AlignCenter)
+        difference_label.setFont(font)
+        mse_label = QtWidgets.QLabel("MSE", evaluation_groupbox)
+        mse_label.setFont(font)
+        psnr_label = QtWidgets.QLabel("PSNR", evaluation_groupbox)
+        psnr_label.setFont(font)
+        corr_label = QtWidgets.QLabel("Correlation Coefficient", evaluation_groupbox)
+        corr_label.setFont(font)
+        d_label = QtWidgets.QLabel("Distortion Degree", evaluation_groupbox)
+        d_label.setFont(font)
+        endpoint_label = QtWidgets.QLabel("Endpoints Number", evaluation_groupbox)
+        endpoint_label.setFont(font)
+        # VALUE LABEL
+        self.mse1_value_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.mse1_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.mse1_value_label.setFont(font)
+        self.mse1_value_label.setText(str(self.mse1_value))
+        self.mse2_value_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.mse2_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.mse2_value_label.setFont(font)
+        self.mse2_value_label.setText(str(self.mse2_value))
+        self.mse_difference_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.mse_difference_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.mse_difference_label.setFont(font)
+        self.mse_difference_label.setText(str(self.mse_difference))
+        self.psnr1_value_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.psnr1_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.psnr1_value_label.setFont(font)
+        self.psnr1_value_label.setText(str(self.psnr1_value))
+        self.psnr2_value_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.psnr2_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.psnr2_value_label.setFont(font)
+        self.psnr2_value_label.setText(str(self.psnr2_value))
+        self.psnr_difference_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.psnr_difference_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.psnr_difference_label.setFont(font)
+        self.psnr_difference_label.setText(str(self.psnr_difference))
+        self.corr1_value_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.corr1_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.corr1_value_label.setFont(font)
+        self.corr1_value_label.setText(str(self.corr1_value))
+        self.corr2_value_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.corr2_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.corr2_value_label.setFont(font)
+        self.corr2_value_label.setText(str(self.corr2_value))
+        self.corr_difference_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.corr_difference_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.corr_difference_label.setFont(font)
+        self.corr_difference_label.setText(str(self.corr_difference))
+        self.d1_value_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.d1_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.d1_value_label.setFont(font)
+        self.d1_value_label.setText(str(self.d1_value))
+        self.d2_value_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.d2_value_label.setFont(font)
+        self.d2_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.d2_value_label.setText(str(self.d2_value))
+        self.d_difference_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.d_difference_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.d_difference_label.setFont(font)
+        self.d_difference_label.setText(str(self.d_difference))
+        self.canny_endpoint_num_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.canny_endpoint_num_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.canny_endpoint_num_label.setFont(font)
+        self.canny_endpoint_num_label.setText(str(self.canny_endpoint_num))
+        self.final_endpoint_num_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.final_endpoint_num_label.setFont(font)
+        self.final_endpoint_num_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.final_endpoint_num_label.setText(str(self.final_endpoint_num))
+        self.endpoint_num_difference_label = QtWidgets.QLabel(evaluation_groupbox)
+        self.endpoint_num_difference_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.endpoint_num_difference_label.setFont(font)
+        self.endpoint_num_difference_label.setText(str(self.endpoint_num_difference))
+        # GRIDLAYOUT
+        layout = QtWidgets.QGridLayout()
+        layout.addWidget(QtWidgets.QLabel(''), 0, 0)
+        layout.addWidget(canny_label, 0, 1)
+        layout.addWidget(proposed_system_label, 0, 2)
+        layout.addWidget(difference_label, 0, 3)
+        layout.addWidget(mse_label, 1, 0)
+        layout.addWidget(self.mse1_value_label, 1, 1)
+        layout.addWidget(self.mse2_value_label, 1, 2)
+        layout.addWidget(self.mse_difference_label, 1, 3)
+        layout.addWidget(psnr_label, 2, 0)
+        layout.addWidget(self.psnr1_value_label, 2, 1)
+        layout.addWidget(self.psnr2_value_label, 2, 2)
+        layout.addWidget(self.psnr_difference_label, 2, 3)
+        layout.addWidget(corr_label, 3, 0)
+        layout.addWidget(self.corr1_value_label, 3, 1)
+        layout.addWidget(self.corr2_value_label, 3, 2)
+        layout.addWidget(self.corr_difference_label, 3, 3)
+        layout.addWidget(d_label, 4, 0)
+        layout.addWidget(self.d1_value_label, 4, 1)
+        layout.addWidget(self.d2_value_label, 4, 2)
+        layout.addWidget(self.d_difference_label, 4, 3)
+        layout.addWidget(endpoint_label, 5, 0)
+        layout.addWidget(self.canny_endpoint_num_label, 5, 1)
+        layout.addWidget(self.final_endpoint_num_label, 5, 2)
+        layout.addWidget(self.endpoint_num_difference_label, 5, 3)
+        evaluation_groupbox.setLayout(layout)
+
+    def output_groupboxes(self):
+        font = QtGui.QFont()
+        font.setFamily("Arial")
+        font.setPointSize(11)
+        self.canny_output_groupbox = QtWidgets.QGroupBox(self)
+        self.canny_output_groupbox.setTitle('Canny Edge Detection')
+        self.canny_output_groupbox.setFont(font)
+        self.canny_output_groupbox.setGeometry(110, 160, 320, 320)
+        self.canny_output_groupbox.setStyleSheet("QGroupBox{border: 1.5px solid silver}")
+        self.final_output_groupbox = QtWidgets.QGroupBox(self)
+        self.final_output_groupbox.setTitle('Final Result')
+        self.final_output_groupbox.setFont(font)
+        self.final_output_groupbox.setGeometry(510, 160, 320, 320)
+        self.final_output_groupbox.setStyleSheet("QGroupBox{border: 1.5px solid silver}")
+
+    def button(self):
+        self.detect_button = QtWidgets.QPushButton('DETECT', self)
+        self.detect_button.setFont(QtGui.QFont('Arial', 16))
+        self.detect_button.setGeometry(375, 725, 201, 55)
+        self.detect_button.clicked.connect(self.process)
+        self.detect_button.setDisabled(True)
+        self.details_button = QtWidgets.QPushButton(self)
+        self.details_button.setIcon(QtGui.QIcon(r'backup\picture\logo_icon\details_icon.png'))
+        self.details_button.setIconSize(QtCore.QSize(35, 35))
+        self.details_button.setGeometry(600, 725, 55, 55)
+        self.details_button.setToolTip('Details')
+        self.details_button.clicked.connect(self.open_details)
+        self.details_button.setDisabled(True)
+
+    def progress_bar(self):
+        self.pbar = QtWidgets.QProgressBar(self)
+        self.pbar.setGeometry(960, 745, 321, 25)
+        self.pbar.setAlignment(QtCore.Qt.AlignCenter)
+
+    @staticmethod
+    def print_image(label, image, pos_x, pos_y):
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+        qformat = QtGui.QImage.Format_ARGB32
+        img = QtGui.QImage(image.data, int(image.shape[1]), int(image.shape[0]), qformat)
+        label.setPixmap((QtGui.QPixmap.scaled(QtGui.QPixmap.fromImage(img), int(image.shape[1]), int(image.shape[0]),
+                                              QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)))
+        label.setGeometry(pos_x, pos_y, int(image.shape[1]), int(image.shape[0]))
+
+    def browse_image(self):
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open File', '.', 'Image Files (*.png)')
+        if filename:
+            self.input_image = cv2.imread(filename, 0)
+            self.print_image(self.original_input_label, self.input_image, 32, 31)
+        self.detect_button.setDisabled(False)
+
+    def open_save(self):
+        self.save_page = Save()
+        self.save_page.show()
+
+    def open_help(self):
+        self.help_page.show()
+
+    def process(self):
+        self.canny_edge_detection()
+        self.modified_ant_colony_optimization()
+        self.morphological_thinning()
+        self.combination()
+        self.system_evaluation()
+        self.update_backup()
+        self.counter = 0
+        self.pbar.setValue(self.counter)
+        self.details_button.setDisabled(False)
+        self.save_action.setDisabled(False)
+        final_image = self.final_image.copy()
+        self.final_image = cv2.cvtColor(self.final_image, cv2.COLOR_GRAY2BGR)
+        for i in range(self.canny_image.shape[1]):
+            for j in range(self.canny_image.shape[0]):
+                if self.canny_image[i, j] == 0 and final_image[i, j] != 0:
+                    self.final_image[i, j] = [0, 0, 255]
+        self.print_image(self.canny_output_label, self.canny_image, 31, 37)
+        self.print_image(self.final_output_label, self.final_image, 31, 37)
+
+    def canny_edge_detection(self):
+        # GAUSSIAN FILTER
+        self.gaussian_image = CannyEdgeDetection().gaussian_filter(self.input_image, self.sd_value)
+        self.change_process_bar_value()
+        # SOBEL
+        self.sobel_image, direction = CannyEdgeDetection().sobel_filter(self.gaussian_image)
+        self.change_process_bar_value()
+        # NON-MAXIMUM SUPPRESSION
+        self.non_maximum_image = CannyEdgeDetection().non_maximum_suppression(self.sobel_image, direction)
+        self.change_process_bar_value()
+        # DOUBLE THRESHOLDING
+        threshold_output = CannyEdgeDetection().double_threshold(self.non_maximum_image, self.t1_value, self.t2_value)
+        self.change_process_bar_value()
+        # HYSTERESIS
+        self.canny_image = CannyEdgeDetection().hysteresis(threshold_output)
+        self.change_process_bar_value()
+
+    def modified_ant_colony_optimization(self):
+        original_image = self.input_image.astype(np.float64)
+        m, n = self.canny_image.shape
+        # ENDPOINT ANALYSIS
+        self.endpoint_image, self.canny_endpoint_num \
+            = ModifiedAntColonyOptimization().endpoint_analysis(self.canny_image)
+        self.change_process_bar_value()
+        # ANT INITIALIZATION
+        endpoint = self.endpoint_image.copy()
+        pheromone = np.ones((m, n), np.float64)
+        self.ant_image = np.zeros((m, n), np.uint8)
+        self.change_process_bar_value()
+        # # PIXEL TRANSITION / PHEROMONE UPDATE
+        path_visibility = np.zeros((m, n))
+        maximum_intensity = np.amax(original_image)
+        for i in range(2, m-2):
+            for j in range(2, n-2):
+                path_visibility[i, j] = (abs(original_image[i-2, j-1] - original_image[i+2, j+1])
+                                         + abs(original_image[i-2, j+1] - original_image[i+2, j-1])
+                                         + abs(original_image[i-1, j-2] - original_image[i+1, j+2])
+                                         + abs(original_image[i-1, j-1] - original_image[i+1, j+1])
+                                         + abs(original_image[i-1, j] - original_image[i+1, j])
+                                         + abs(original_image[i-1, j+1] - original_image[i-1, j-1])
+                                         + abs(original_image[i-1, j+2] - original_image[i-1, j-2])
+                                         + abs(original_image[i, j-1] - original_image[i, j+1]))\
+                                        / maximum_intensity
+        for i in range(10):
+            path = ModifiedAntColonyOptimization().pixel_transition(self.canny_image, endpoint, pheromone,
+                                                                    path_visibility, self.alpha_value,
+                                                                    self.beta_value, self.step_value)
+            self.change_process_bar_value()
+            pheromone = ModifiedAntColonyOptimization().pheromone_update(path, pheromone, 0.3)
+            self.change_process_bar_value()
+        # PIXEL SELECTION
+        k = np.amax(pheromone)
+        for i in range(m):
+            for j in range(n):
+                if pheromone[i, j] >= k * 0.93:
+                    self.ant_image[i, j] = 255
+        self.change_process_bar_value()
+
+    def morphological_thinning(self):
+        self.thinning_image = self.ant_image.copy()
+        _, self.thinning_image = MorphologicalThinning().thinning(self.ant_image, self.thinning_image)
+        self.change_process_bar_value()
+
+    def combination(self):
+        m, n = self.thinning_image.shape
+        self.final_image = np.zeros((m, n), np.uint8)
+        for i in range(m):
+            for j in range(n):
+                if self.canny_image[i, j] != 0 or self.thinning_image[i, j] != 0:
+                    self.final_image[i, j] = 255
+        _, self.final_endpoint_num = ModifiedAntColonyOptimization().endpoint_analysis(self.final_image)
+        self.change_process_bar_value()
+
+    def system_evaluation(self):
+        # GET VALUES
+        original_image = self.input_image.astype(np.float64)
+        self.mse1_value, self.mse2_value, self.psnr1_value, self.psnr2_value, self.corr1_value, self.corr2_value, \
+            self.d1_value, self.d2_value = Evaluate().evaluation(original_image, self.canny_image, self.final_image)
+        self.change_process_bar_value()
+        self.mse3_value, self.mse4_value, self.psnr3_value, self.psnr4_value, self.corr3_value, self.corr4_value, \
+            self.d3_value, self.d4_value = Evaluate().evaluation(original_image, self.ant_image, self.thinning_image)
+        self.change_process_bar_value()
+        self.mse_difference = self.mse2_value - self.mse1_value
+        self.psnr_difference = self.psnr2_value - self.psnr1_value
+        self.corr_difference = self.corr2_value - self.corr1_value
+        self.d_difference = self.d2_value - self.d1_value
+        self.endpoint_num_difference = self.final_endpoint_num - self.canny_endpoint_num
+        self.change_process_bar_value()
+        # PRINT
+        self.mse1_value_label.setText(str(f'{self.mse1_value:1.8g}'))
+        self.mse2_value_label.setText(str(f'{self.mse2_value:1.8g}'))
+        self.psnr1_value_label.setText(str(f'{self.psnr1_value:1.8g}'))
+        self.psnr2_value_label.setText(str(f'{self.psnr2_value:1.8g}'))
+        self.corr1_value_label.setText(str(f'{self.corr1_value:1.8g}'))
+        self.corr2_value_label.setText(str(f'{self.corr2_value:1.8g}'))
+        self.d1_value_label.setText(str(f'{self.d1_value:1.8g}'))
+        self.d2_value_label.setText(str(f'{self.d2_value:1.8g}'))
+        self.canny_endpoint_num_label.setText(str(f'{self.canny_endpoint_num:1.8g}'))
+        self.final_endpoint_num_label.setText(str(f'{self.final_endpoint_num:1.8g}'))
+        if self.mse_difference > 0:
+            self.mse_difference_label.setText(str('+' + f'{self.mse_difference:1.8g}'))
+        else:
+            self.mse_difference_label.setText(str(f'{self.mse_difference:1.8g}'))
+        if self.psnr_difference > 0:
+            self.psnr_difference_label.setText(str('+' + f'{self.psnr_difference:1.8g}'))
+        else:
+            self.psnr_difference_label.setText(str(f'{self.psnr_difference:1.8g}'))
+        if self.corr_difference > 0:
+            self.corr_difference_label.setText(str('+' + f'{self.corr_difference:1.8g}'))
+        else:
+            self.corr_difference_label.setText(str(f'{self.corr_difference:1.8g}'))
+        if self.d_difference > 0:
+            self.d_difference_label.setText(str('+' + f'{self.d_difference:1.8g}'))
+        else:
+            self.d_difference_label.setText(str(f'{self.d_difference:1.8g}'))
+        if self.endpoint_num_difference > 0:
+            self.endpoint_num_difference_label.setText(str('+' + f'{self.endpoint_num_difference:1.8g}'))
+        else:
+            self.endpoint_num_difference_label.setText(str(f'{self.endpoint_num_difference:1.8g}'))
+        if self.mse2_value < self.mse1_value:
+            self.mse_difference_label.setStyleSheet("QLabel {color : green;}")
+        else:
+            self.mse_difference_label.setStyleSheet("QLabel {color : red;}")
+        if self.psnr2_value < self.psnr1_value:
+            self.psnr_difference_label.setStyleSheet("QLabel {color : red;}")
+        else:
+            self.psnr_difference_label.setStyleSheet("QLabel {color : green;}")
+        if self.corr2_value < self.corr1_value:
+            self.corr_difference_label.setStyleSheet("QLabel {color : red;}")
+        else:
+            self.corr_difference_label.setStyleSheet("QLabel {color : green;}")
+        if self.d2_value < self.d1_value:
+            self.d_difference_label.setStyleSheet("QLabel {color : green;}")
+        else:
+            self.d_difference_label.setStyleSheet("QLabel {color : red;}")
+        if self.final_endpoint_num < self.canny_endpoint_num:
+            self.endpoint_num_difference_label.setStyleSheet("QLabel {color : green;}")
+        else:
+            self.endpoint_num_difference_label.setStyleSheet("QLabel {color : red;}")
+        self.change_process_bar_value()
+
+    def change_process_bar_value(self):
+        self.counter += 3
+        self.pbar.setValue(self.counter)
+
+    def open_details(self):
+        self.details_page = Detail()
+        self.details_page.show()
+
+    def update_backup(self):
+        cv2.imwrite(r'backup\backup_pic\gaussian_image.png', self.gaussian_image)
+        cv2.imwrite(r'backup\backup_pic\sobel_image.png', self.sobel_image)
+        cv2.imwrite(r'backup\backup_pic\non_maximum_image.png', self.non_maximum_image)
+        cv2.imwrite(r'backup\backup_pic\threshold_hys_image.png', self.canny_image)
+        cv2.imwrite(r'backup\backup_pic\endpoint_image.png', self.endpoint_image)
+        cv2.imwrite(r'backup\backup_pic\ant_image.png', self.ant_image)
+        cv2.imwrite(r'backup\backup_pic\thinning_image.png', self.thinning_image)
+        cv2.imwrite(r'backup\backup_pic\combine_image.png', self.final_image)
+        reading_file = open(r'backup\backup_value.txt', "r")
+        new_file_content = ''
+        for line in reading_file:
+            stripped_line = line.strip()
+            new_line = line
+            if 'MSE1' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.mse1_value:1.8g}'))
+            elif 'MSE2' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.mse2_value:1.8g}'))
+            elif 'MSE3' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.mse3_value:1.8g}'))
+            elif 'MSE4' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.mse4_value:1.8g}'))
+            elif 'PSNR1' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.psnr1_value:1.8g}'))
+            elif 'PSNR2' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.psnr2_value:1.8g}'))
+            elif 'PSNR3' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.psnr3_value:1.8g}'))
+            elif 'PSNR4' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.psnr4_value:1.8g}'))
+            elif 'CORR1' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.corr1_value:1.8g}'))
+            elif 'CORR2' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.corr2_value:1.8g}'))
+            elif 'CORR3' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.corr3_value:1.8g}'))
+            elif 'CORR4' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.corr4_value:1.8g}'))
+            elif 'D1' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.d1_value:1.8g}'))
+            elif 'D2' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.d2_value:1.8g}'))
+            elif 'D3' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.d3_value:1.8g}'))
+            elif 'D4' in line:
+                new_line = stripped_line.replace(line.split(":")[-1].strip(), str(f'{self.d4_value:1.8g}'))
+            new_file_content += new_line + "\n"
+        reading_file.close()
+        writing_file = open(r'backup\backup_value.txt', "w")
+        writing_file.write(new_file_content)
+        writing_file.close()
+
+
+# if __name__ == '__main__':
+#     app = QtWidgets.QApplication(sys.argv)
+#     window = SecondPage()
+#     window.show()
+#     sys.exit(app.exec())
